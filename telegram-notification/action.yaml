@@ -177,6 +177,8 @@ runs:
           -H "Content-Type: application/json" \
           -d "$JSON_PAYLOAD")
         
+        echo "$RESPONSE"
+        
         # Check if successful
         OK=$(echo "$RESPONSE" | jq -r '.ok')
         

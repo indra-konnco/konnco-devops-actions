@@ -1,0 +1,211 @@
+# .github/actions/telegram-notify/action.yml
+name: 'Generic Telegram Notification'
+description: 'Send notifications to Telegram with rich formatting and status indicators'
+author: 'Konnco Studio'
+
+inputs:
+  bot-token:
+    description: 'Telegram Bot Token'
+    required: true
+  chat-id:
+    description: 'Telegram Chat ID (can be user ID, group ID, or channel ID)'
+    required: true
+  message:
+    description: 'Message to send (supports Markdown)'
+    required: false
+  status:
+    description: 'Notification status (success, failure, warning, info)'
+    required: false
+    default: 'info'
+  title:
+    description: 'Notification title'
+    required: false
+  include-details:
+    description: 'Include repository and workflow details'
+    required: false
+    default: 'true'
+  parse-mode:
+    description: 'Message parse mode (Markdown, MarkdownV2, HTML)'
+    required: false
+    default: 'Markdown'
+  disable-notification:
+    description: 'Send notification silently'
+    required: false
+    default: 'false'
+  custom-emoji:
+    description: 'Custom emoji to use (overrides status emoji)'
+    required: false
+  thread-id:
+    description: 'Thread ID for topic groups'
+    required: false
+
+outputs:
+  message-id:
+    description: 'ID of the sent message'
+    value: ${{ steps.send.outputs.message_id }}
+  success:
+    description: 'Whether the message was sent successfully'
+    value: ${{ steps.send.outputs.success }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Prepare notification
+      id: prepare
+      shell: bash
+      run: |
+        # Determine emoji based on status
+        case "${{ inputs.status }}" in
+          success)
+            EMOJI="✅"
+            STATUS_TEXT="Success"
+            ;;
+          failure)
+            EMOJI="❌"
+            STATUS_TEXT="Failed"
+            ;;
+          warning)
+            EMOJI="⚠️"
+            STATUS_TEXT="Warning"
+            ;;
+          info)
+            EMOJI="ℹ️"
+            STATUS_TEXT="Info"
+            ;;
+          *)
+            EMOJI="📢"
+            STATUS_TEXT="Notification"
+            ;;
+        esac
+        
+        # Use custom emoji if provided
+        if [[ -n "${{ inputs.custom-emoji }}" ]]; then
+          EMOJI="${{ inputs.custom-emoji }}"
+        fi
+        
+        echo "emoji=$EMOJI" >> $GITHUB_OUTPUT
+        echo "status_text=$STATUS_TEXT" >> $GITHUB_OUTPUT
+        
+        # Prepare repository details
+        REPO_NAME="${{ github.repository }}"
+        WORKFLOW_NAME="${{ github.workflow }}"
+        BRANCH="${{ github.ref_name }}"
+        COMMIT_SHA="${{ github.sha }}"
+        SHORT_SHA="${COMMIT_SHA:0:7}"
+        ACTOR="${{ github.actor }}"
+        RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        
+        echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+        echo "workflow_name=$WORKFLOW_NAME" >> $GITHUB_OUTPUT
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+        echo "actor=$ACTOR" >> $GITHUB_OUTPUT
+        echo "run_url=$RUN_URL" >> $GITHUB_OUTPUT
+
+    - name: Build message
+      id: build
+      shell: bash
+      run: |
+        EMOJI="${{ steps.prepare.outputs.emoji }}"
+        STATUS="${{ steps.prepare.outputs.status_text }}"
+        
+        # Start building message
+        MESSAGE="$EMOJI *$STATUS*"
+        
+        # Add title if provided
+        if [[ -n "${{ inputs.title }}" ]]; then
+          MESSAGE="$MESSAGE: ${{ inputs.title }}"
+        fi
+        
+        MESSAGE="$MESSAGE\n"
+        
+        # Add custom message if provided
+        if [[ -n "${{ inputs.message }}" ]]; then
+          MESSAGE="$MESSAGE\n${{ inputs.message }}\n"
+        fi
+        
+        # Add repository details if enabled
+        if [[ "${{ inputs.include-details }}" == "true" ]]; then
+          MESSAGE="$MESSAGE\n"
+          MESSAGE="$MESSAGE📦 *Repository:* \`${{ steps.prepare.outputs.repo_name }}\`\n"
+          MESSAGE="$MESSAGE🔄 *Workflow:* ${{ steps.prepare.outputs.workflow_name }}\n"
+          MESSAGE="$MESSAGE🌿 *Branch:* \`${{ steps.prepare.outputs.branch }}\`\n"
+          MESSAGE="$MESSAGE📝 *Commit:* \`${{ steps.prepare.outputs.short_sha }}\`\n"
+          MESSAGE="$MESSAGE👤 *Actor:* ${{ steps.prepare.outputs.actor }}\n"
+          MESSAGE="$MESSAGE🔗 [View Run](${{ steps.prepare.outputs.run_url }})"
+        fi
+        
+        # Save message to file to handle special characters
+        echo -e "$MESSAGE" > /tmp/telegram_message.txt
+        echo "Message prepared successfully"
+
+    - name: Send to Telegram
+      id: send
+      shell: bash
+      env:
+        BOT_TOKEN: ${{ inputs.bot-token }}
+        CHAT_ID: ${{ inputs.chat-id }}
+      run: |
+        # Read message from file
+        MESSAGE=$(cat /tmp/telegram_message.txt)
+        
+        # Prepare API URL
+        API_URL="https://api.telegram.org/bot${BOT_TOKEN}/sendMessage"
+        
+        # Build JSON payload
+        JSON_PAYLOAD=$(jq -n \
+          --arg chat_id "$CHAT_ID" \
+          --arg text "$MESSAGE" \
+          --arg parse_mode "${{ inputs.parse-mode }}" \
+          --argjson disable_notification ${{ inputs.disable-notification }} \
+          '{
+            chat_id: $chat_id,
+            text: $text,
+            parse_mode: $parse_mode,
+            disable_notification: $disable_notification,
+            disable_web_page_preview: true
+          }')
+        
+        # Add thread_id if provided
+        if [[ -n "${{ inputs.thread-id }}" ]]; then
+          JSON_PAYLOAD=$(echo "$JSON_PAYLOAD" | jq --arg thread_id "${{ inputs.thread-id }}" '. + {message_thread_id: ($thread_id | tonumber)}')
+        fi
+        
+        # Send message
+        echo "📤 Sending notification to Telegram..."
+        RESPONSE=$(curl -s -X POST "$API_URL" \
+          -H "Content-Type: application/json" \
+          -d "$JSON_PAYLOAD")
+        
+        # Check if successful
+        OK=$(echo "$RESPONSE" | jq -r '.ok')
+        
+        if [[ "$OK" == "true" ]]; then
+          MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.result.message_id')
+          echo "✅ Message sent successfully (ID: $MESSAGE_ID)"
+          echo "message_id=$MESSAGE_ID" >> $GITHUB_OUTPUT
+          echo "success=true" >> $GITHUB_OUTPUT
+        else
+          ERROR_DESC=$(echo "$RESPONSE" | jq -r '.description')
+          echo "❌ Failed to send message: $ERROR_DESC"
+          echo "success=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        # Cleanup
+        rm -f /tmp/telegram_message.txt
+
+    - name: Summary
+      if: always()
+      shell: bash
+      run: |
+        if [[ "${{ steps.send.outputs.success }}" == "true" ]]; then
+          echo "✅ Telegram notification sent successfully"
+          echo "Message ID: ${{ steps.send.outputs.message-id }}"
+        else
+          echo "❌ Failed to send Telegram notification"
+        fi
+
+branding:
+  icon: 'send'
+  color: 'blue'

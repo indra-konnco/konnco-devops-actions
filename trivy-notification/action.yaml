@@ -37,6 +37,7 @@ runs:
         severity: HIGH,CRITICAL,MEDIUM,LOW
 
     - name: Show Trivy Result
+      shell: bash
       run: |
         echo "=== Trivy Scan Result ==="
         cat trivy-result.txt
@@ -77,6 +78,9 @@ runs:
         CRITICAL: ${{ steps.vulns.outputs.CRITICAL }}
         MEDIUM: ${{ steps.vulns.outputs.MEDIUM }}
         LOW: ${{ steps.vulns.outputs.LOW }}
+
+        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
         REPO: ${{ github.repository }}
         RUN_ID: ${{ github.run_id }}
         PUSHER: ${{ github.actor }}
@@ -87,7 +91,9 @@ runs:
         🔐 *Trivy Scan Completed - ${APP}*
 
         👤 *Pushed by:* ${PUSHER}
+        📝 *Commit Message:* ${COMMIT_MESSAGE}
         🖼️ *Image:* \`${IMAGE}\`
+        ✍️ *Author:* ${COMMIT_AUTHOR}
 
         *Severity Summary:*
         🔥 *CRITICAL:* ${CRITICAL}

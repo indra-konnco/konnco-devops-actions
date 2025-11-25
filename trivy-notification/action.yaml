@@ -36,6 +36,11 @@ runs:
         output: trivy-result.txt
         severity: HIGH,CRITICAL,MEDIUM,LOW
 
+    - name: Show Trivy Result
+      run: |
+        echo "=== Trivy Scan Result ==="
+        cat trivy-result.txt
+
     - name: Count Vulnerabilities
       id: vulns
       shell: bash

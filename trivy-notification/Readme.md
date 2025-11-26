@@ -29,24 +29,19 @@ This composite action performs:
 Add this to `.github/workflows/pipeline.yml` :
 
 ```yaml
-security-scan:
-  name: Security Scanning Trivy
-  needs: build-and-push
-  runs-on: self-hosted
-
-  steps:
-    - name: Trivy Notification
-      uses: indra-konnco/konnco-devops-actions/trivy-notification@test
-      with:
-        image: "(SWR_REGION_NAME).myhuaweicloud.com/konnco-spn/(APP_NAME):${{ needs.build-and-push.outputs.TAG }}"
-        image_name: "(APP_NAME)"
-        region: "(REGION)"
-      env:
-        TELEGRAM_BOT_TOKEN_SECURITY: ${{ secrets.TELEGRAM_BOT_TOKEN_SECURITY }}
-        TELEGRAM_CHAT_ID_SECURITY: ${{ secrets.TELEGRAM_CHAT_ID_SECURITY }}
-        TELEGRAM_TOPIC_ID_SECURITY: ${{ secrets.TELEGRAM_TOPIC_ID_SECURITY }}
-        HUAWEI_SWR_PASSWORD: ${{ secrets.HUAWEI_SWR_PASSWORD }}
-        HUAWEI_SWR_USERNAME: ${{ secrets.HUAWEI_SWR_USERNAME }}
+      - name: Trivy Scan and Notify
+        if: contains(needs.get-affected.outputs.apps, matrix.app)
+        uses: indra-konnco/konnco-devops-actions/trivy-notification@test
+        with:
+          image: "swr.${{ env.REGION }}.myhuaweicloud.com/${{ env.NAMESPACE }}/${{ matrix.app }}:${{ env.TAG }}"
+          image_name: ${{ matrix.app }}
+          region: ${{ env.REGION }}
+        env:
+          TELEGRAM_BOT_TOKEN_SECURITY: ${{ secrets.TELEGRAM_BOT_TOKEN_SECURITY }}
+          TELEGRAM_CHAT_ID_SECURITY: ${{ secrets.TELEGRAM_CHAT_ID_SECURITY }}
+          TELEGRAM_TOPIC_ID_SECURITY: ${{ secrets.TELEGRAM_TOPIC_ID_SECURITY }}
+          HUAWEI_SWR_USERNAME: ${{ secrets.HUAWEI_SWR_USERNAME }}
+          HUAWEI_SWR_PASSWORD: ${{ secrets.HUAWEI_SWR_PASSWORD }}
 ```
 
 ## 📤 Artifact Output

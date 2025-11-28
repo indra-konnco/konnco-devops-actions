@@ -178,6 +178,7 @@ runs:
           -d "$JSON_PAYLOAD")
         
         echo "$RESPONSE"
+        echo "$API_URL"
         
         # Check if successful
         OK=$(echo "$RESPONSE" | jq -r '.ok')

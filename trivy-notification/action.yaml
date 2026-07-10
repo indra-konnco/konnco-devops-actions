@@ -29,12 +29,17 @@ runs:
 
     - name: Run Trivy Scan
       id: trivy
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         image-ref: ${{ inputs.image }}
         format: table
         output: trivy-result.txt
         severity: HIGH,CRITICAL,MEDIUM,LOW
+        # Cache DB outside github.workspace so actions/checkout's default
+        # `git clean -ffdx` doesn't wipe it every run; skip the GH-hosted
+        # actions/cache round-trip and rely on the runner's local disk instead.
+        cache: 'false'
+        cache-dir: ${{ runner.tool_cache }}/trivy-db
 
     - name: Show Trivy Result
       shell: bash
@@ -61,12 +66,14 @@ runs:
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
+      continue-on-error: true
       with:
         name: trivy-report-${{ inputs.image_name }}
         path: ${{ steps.filename.outputs.FILE }}
 
     - name: Send Telegram Notification
       shell: bash
+      continue-on-error: true
       env:
         TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN_SECURITY }}
         TELEGRAM_CHAT_ID: ${{ env.TELEGRAM_CHAT_ID_SECURITY }}
@@ -103,7 +110,7 @@ runs:
         EOF
         )
 
-        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        curl -s --max-time 20 --retry 2 --retry-delay 2 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
           -d chat_id="${TELEGRAM_CHAT_ID}" \
           -d message_thread_id="${TELEGRAM_TOPIC_ID}" \
           -d text="$MESSAGE" \
